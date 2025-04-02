@@ -45,7 +45,7 @@ class HEXAPOD:
             print("Starting up the hexapod...")
             pitools.startup(
                 pidevice=self.pidevice,  # The PI device object
-                stages=axes,             # All axes to initialize
+                stages=None,             # All axes to initialize
                 refmodes='FRF',          # Use FRF (reference using reference position) for all axes
                 servostates=True         # Enable servo for all axes
             )
@@ -450,17 +450,6 @@ def move_in_circle(radius=3, height=0, steps=36, delay=0.1):
         steps: Number of points in the circle
         delay: Time delay between movements in seconds
     """
-    # First, make sure the hexapod is initialized and referenced
-    try:
-        # Turn on servos for all axes
-        print("Ensuring servos are on...")
-        hexapod.SVO(['X', 'Y', 'Z', 'U', 'V', 'W'], [1, 1, 1, 1, 1, 1])
-        time.sleep(1)  # Give time for servos to turn on
-
-    except Exception as e:
-        print(f"Initialization error: {e}")
-        return
-    
     print("Starting circular motion with radius:", radius)
     
     try:
@@ -487,5 +476,5 @@ def move_in_circle(radius=3, height=0, steps=36, delay=0.1):
 
 
 # Execute the circle motion with a radius of 15mm at 5mm height
-move_in_circle(radius=2, height=0, steps=550, delay=0.001)
+move_in_circle(radius=15, height=0, steps=550, delay=0.001)
 # %%
