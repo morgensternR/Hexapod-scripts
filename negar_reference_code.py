@@ -182,6 +182,8 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import Button, CheckButtons
 import numpy as np
 import time
+import matplotlib.pyplot as plt
+from matplotlib.widgets import Button, CheckButtons
 import os
 import seabreeze.spectrometers as sb
    
