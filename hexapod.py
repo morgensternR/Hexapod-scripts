@@ -1,8 +1,12 @@
-
+# Import packages, 
 import serial
 import time
 import sys
-
+# if using serial, find com port number with pyvisa
+# import pyvisa as visa
+# rm = visa.ResourceManager()
+# rm.list_resources()
+#%%
 # Try to import PI Python libraries, but continue if not available
 try:
     from pipython import GCSDevice, pitools
@@ -51,6 +55,9 @@ class HexapodController:
             
         # Connect to the device
         self.connect()
+        
+        # When first started, turn on all axes
+        self.initialize()
         
     def connect(self, auto_setup=True):
         """
@@ -909,3 +916,51 @@ class HexapodController:
         except:
             pass
 
+
+
+#%%
+# Initialize hexapod object using serial (DOESNT WORK YET)
+#hexa = HexapodController(connection_type='serial', port='COM7', baudrate=115200, timeout=1, device_name='C-887')
+# Initialize hexapod object using PiPython window
+hexa = HexapodController(connection_type='pipython', port=None, baudrate=115200, timeout=1, device_name='C-887')
+
+
+
+#%%
+import numpy as np
+import time
+# Goal: make a function that scans two axes
+def set_pos_to_zero(hexapod_object):
+    for axis in ['X', 'Y', 'Z', 'U', 'V', 'W']:
+        hexapod_object.move_absolute(axis, 0)
+#%%
+# Scans 2 axis and goes back to inital position
+# Units are in mm
+def scan_2d(hexapod_object, axis_1, axis_2, step_range, step_size):
+    scan_range = np.arange(start = -step_range, stop = step_range+(step_size), step = step_size)
+    inital_postion = hexapod_object.get_position()
+    for axis_1_step in scan_range:
+        axis_1_initial_pos = inital_postion[f'{axis_1}'] 
+        step_to_move_to = axis_1_initial_pos + axis_1_step
+        print(f'Moving {axis_1} to {step_to_move_to}')
+        hexapod_object.move_absolute(axes = f'{axis_1}', positions = step_to_move_to) 
+        time.sleep(0.1)
+        for axis_2_step in scan_range:
+            axis_2_initial_pos = inital_postion[f'{axis_2}'] 
+            step_to_move_to = axis_2_initial_pos + axis_2_step
+            print(f'Moving {axis_2} to {step_to_move_to}')
+            hexapod_object.move_absolute(axes = f'{axis_2}', positions = step_to_move_to)
+            # insert what you want to do / measure after moving (voltage.etc)
+            # Log fiber position with hexapod_object.get_position()
+            
+            time.sleep(0.1)
+    for axis in inital_postion.keys():
+        hexapod_object.move_absolute(axis, inital_postion[f'{axis}'])
+            
+scan_2d(hexapod_object = hexa, axis_1 = 'X', axis_2 = 'Y', step_range = 0.001, step_size = 0.0001)
+
+  
+    #%%
+scan_range = np.arange(start = -0.02, stop = 0.02, step = 0.001)
+print(scan_range)  
+    
