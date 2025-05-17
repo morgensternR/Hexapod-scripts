@@ -197,7 +197,7 @@ class HexapodController:
                 pitools.startup(
                     pidevice=self.pidevice,  # The PI device object
                     stages=None,             # All axes to initialize
-                    refmodes='FRF',          # Use FRF (reference using reference position) for all axes
+                    refmodes=None,          # Use FRF (reference using reference position) for all axes
                     servostates=True         # Enable servo for all axes
                 )
                 print("Hexapod initialization complete")
@@ -915,10 +915,9 @@ class HexapodController:
             self.disconnect()
         except:
             pass
-
-
-
-#%%
+    def set_pos_to_zero(self):
+        for axis in ['X', 'Y', 'Z', 'U', 'V', 'W']:
+            self.move_absolute(axis, 0)
 # Initialize hexapod object using serial (DOESNT WORK YET)
 #hexa = HexapodController(connection_type='serial', port='COM7', baudrate=115200, timeout=1, device_name='C-887')
 # Initialize hexapod object using PiPython window
@@ -927,40 +926,106 @@ hexa = HexapodController(connection_type='pipython', port=None, baudrate=115200,
 
 
 #%%
-import numpy as np
-import time
-# Goal: make a function that scans two axes
-def set_pos_to_zero(hexapod_object):
-    for axis in ['X', 'Y', 'Z', 'U', 'V', 'W']:
-        hexapod_object.move_absolute(axis, 0)
+
+    
 #%%
 # Scans 2 axis and goes back to inital position
 # Units are in mm
-def scan_2d(hexapod_object, axis_1, axis_2, step_range, step_size):
-    scan_range = np.arange(start = -step_range, stop = step_range+(step_size), step = step_size)
-    inital_postion = hexapod_object.get_position()
-    for axis_1_step in scan_range:
-        axis_1_initial_pos = inital_postion[f'{axis_1}'] 
-        step_to_move_to = axis_1_initial_pos + axis_1_step
-        print(f'Moving {axis_1} to {step_to_move_to}')
-        hexapod_object.move_absolute(axes = f'{axis_1}', positions = step_to_move_to) 
-        time.sleep(0.1)
-        for axis_2_step in scan_range:
-            axis_2_initial_pos = inital_postion[f'{axis_2}'] 
-            step_to_move_to = axis_2_initial_pos + axis_2_step
-            print(f'Moving {axis_2} to {step_to_move_to}')
-            hexapod_object.move_absolute(axes = f'{axis_2}', positions = step_to_move_to)
-            # insert what you want to do / measure after moving (voltage.etc)
-            # Log fiber position with hexapod_object.get_position()
+import numpy as np
+import time
+import csv
+import os
+import u6
+
+# Make the labjack instrument and call it "d"
+right_labjack = u6.U6(firstFound=False, localId=None, serial=360024796)
+#left_labjack = u6.U6(firstFound=False, localId=None, serial=360011806)
+
+
+def get_voltage(num_avg, labjack_object):     
+        voltage_list = []
+        voltage_channel_list =[]
+        for channel in [0,2,4,6]:
+            for n in range(num_avg):
+                voltage = labjack_object.getAIN(positiveChannel = channel,
+                                resolutionIndex = 9,                
+                                gainIndex = 0,
+                                settlingFactor = 2,
+                                differential = True)
+                voltage_list.append(voltage)
+            voltage_mean= np.mean(voltage_list)
             
-            time.sleep(0.1)
-    for axis in inital_postion.keys():
-        hexapod_object.move_absolute(axis, inital_postion[f'{axis}'])
-            
-scan_2d(hexapod_object = hexa, axis_1 = 'X', axis_2 = 'Y', step_range = 0.001, step_size = 0.0001)
+            voltage_channel_list.append(voltage_mean)
+        v1, v2, v3, v4 = voltage_list[0], voltage_list[1], voltage_list[2], voltage_list[3]
+        return v1, v2, v3, v4
+def get_both_labjack_voltages(left_labjack, right_labjack, num_avg):
+        l_v1, l_v2, l_v3, l_v4 = get_voltage(num_avg=num_avg, labjack_object=left_labjack)
+        
+        r_v1, r_v2, r_v3, r_v4 = get_voltage(num_avg=num_avg, labjack_object=right_labjack)
+        
+        return l_v1, l_v2, l_v3, l_v4, r_v1, r_v2, r_v3, r_v4
+
+#%%%
+result = get_voltage(num_avg = 10, labjack_object=right_labjack)
+
+print(result)
+
+
+#%%
+
+# scan_2d requires the use of get_both_labjack_voltages function. Pass this into measurement_function. 
+
+def scan_2d(hexapod_object, axis_1, axis_2, step_range, step_size, measurment_function, csv_file_name='my_csv_file.csv'):
+    try:
+        scan_range = np.arange(start=-step_range, stop=step_range + step_size, step=step_size)
+        initial_position = hexapod_object.get_position()
+
+        # Check if CSV file exists, if not create and write header
+        file_exists = os.path.isfile(csv_file_name)
+        with open(csv_file_name, mode='a', newline='') as file:
+            writer = csv.writer(file)
+            if not file_exists:
+                writer.writerow(['position',  'l_v1', 'l_v2', 'l_v3', 'l_v4', 'r_v1', 'r_v2', 'r_v3', 'r_v4'])  # Header
+
+            for axis_1_step in scan_range:
+                axis_1_initial_pos = initial_position[f'{axis_1}']
+                step_to_move_to_axis_1 = axis_1_initial_pos + axis_1_step
+                print(f'Moving {axis_1} to {step_to_move_to_axis_1}')
+                hexapod_object.move_absolute(axes=f'{axis_1}', positions=step_to_move_to_axis_1)
+                time.sleep(0.1)
+
+                for axis_2_step in scan_range:
+                    axis_2_initial_pos = initial_position[f'{axis_2}']
+                    step_to_move_to_axis_2 = axis_2_initial_pos + axis_2_step
+                    print(f'Moving {axis_2} to {step_to_move_to_axis_2}')
+                    hexapod_object.move_absolute(axes=f'{axis_2}', positions=step_to_move_to_axis_2)
+                    time.sleep(0.1)
+
+                    # Get measurement
+                    #l_v1, l_v2, l_v3, l_v4, r_v1, r_v2, r_v3, r_v4 = measurment_function()
+                    r_v1, r_v2, r_v3, r_v4 = measurment_function()
+
+                    # Log the step positions and measurement
+                    hexapod_position = hexapod_object.get_position()
+                    axis1_pos = hexapod_position[f'{axis_1}']
+                    axis2_pos = hexapod_position[f'{axis_2}']
+                    
+                    #writer.writerow([[f'{axis1_pos}', f'{axis2_pos}'], 
+                    #                 l_v1, l_v2, l_v3, l_v4, r_v1, r_v2, r_v3, r_v4])
+                    writer.writerow([[f'{axis1_pos}', f'{axis2_pos}'], 
+                                      r_v1, r_v2, r_v3, r_v4])
+
+        # Return to initial position
+        for axis in initial_position.keys():
+            hexapod_object.move_absolute(axis, initial_position[axis])
+
+    except Exception as e:
+        print(f"Error during scan: {e}")
+
+   #%%         
+scan_2d(hexapod_object = hexa, axis_1 = 'X', axis_2 = 'Y', step_range = 0.1, step_size = 0.05, 
+    measurment_function= lambda:get_voltage(num_avg=10,labjack_object=right_labjack), csv_file_name='first_scan_test_Right_labjack.csv')
+
 
   
     #%%
-scan_range = np.arange(start = -0.02, stop = 0.02, step = 0.001)
-print(scan_range)  
-    
