@@ -1,110 +1,63 @@
+# -*- coding: utf-8 -*-
+"""
+Updated: May 2025
+Includes: FFT peak detection, vertical lines, custom annotations on FFT plot
+"""
+
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button, CheckButtons
 import numpy as np
 import time
 import os
 import seabreeze.spectrometers as sb
-from scipy.signal import find_peaks
 
-# --- Config ---
 xrange = [400, 1000]
-integrationtime = 300000  # µs
-plotwait = 0.05  # seconds
+integrationtime = 300000
+plotwait = 0.05
+
+spec = sb.Spectrometer.from_serial_number()
+spec.integration_time_micros(integrationtime)
+
+spec2 = sb.Spectrometer.from_serial_number()
+spec2.integration_time_micros(integrationtime)
+
 i = 0
 paused = 0
 autoscaley = 0
 prefix_csv = './log/spectrum_'
 
-# --- Initialize Spectrometers ---
-spec = sb.Spectrometer.from_serial_number()
-spec.integration_time_micros(integrationtime)
-spec2 = sb.Spectrometer.from_serial_number()
-spec2.integration_time_micros(integrationtime)
-
-# --- Get Wavelengths and Initial Intensities ---
-ll = spec.wavelengths()
-lowidx = next(i for i,v in enumerate(ll) if v > xrange[0])
-highidx = next(i for i,v in enumerate(ll) if v > xrange[1])
-s = spec.intensities()
-
-ll2 = spec2.wavelengths()
-lowidx2 = next(i for i,v in enumerate(ll2) if v > xrange[0])
-highidx2 = next(i for i,v in enumerate(ll2) if v > xrange[1])
-s2 = spec2.intensities()
-
-# --- FFT Helpers ---
-c = 299792458
-
-def fft_with_axes(Intensities, Freq, dx, xvals):
-    yval = np.interp(xvals[::-1], Freq[::-1], Intensities[::-1])
-    y = yval
-    fourier = np.fft.fft(y)
-    freqs = np.fft.fftfreq(y.size, dx)
-    idx = np.argsort(freqs)
-    return freqs[idx], fourier[idx]
-
-# --- FFT Setup ---
-Freq = c / (ll[lowidx:highidx] * 1e-9)
-x = np.linspace(np.max(Freq), np.min(Freq), 10000)
-dx = x[1] - x[0]
-
-Freq2 = c / (ll2[lowidx2:highidx2] * 1e-9)
-x2 = np.linspace(np.max(Freq2), np.min(Freq2), 10000)
-dx2 = x2[1] - x2[0]
-
-# --- Plot Setup ---
 plt.ion()
-fig, ax = plt.subplots(2, 1, figsize=(10, 6))
+fig, ax = plt.subplots(2)
 plt.subplots_adjust(bottom=0.25)
 
-# Wavelength Plot
-plt.axes(ax[0])
-l, = plt.plot(ll[lowidx:highidx], s[lowidx:highidx], lw=2, label="Spectrum 1")
-lspec2, = plt.plot(ll2[lowidx2:highidx2], s2[lowidx2:highidx2], lw=2, label="Spectrum 2")
-ax[0].set_xlabel('Wavelength (nm)')
-ax[0].set_ylabel('Intensity (a.u.)')
-ax[0].legend()
-ax[0].grid(True)
-ax[0].set_xlim(xrange)
+def handle_close(evt):
+    global i
+    i = 1
 
-# FFT Plot
-l2, = ax[1].plot([], [], 'g', label='FFT 1')
-l2spec2, = ax[1].plot([], [], 'r', label='FFT 2')
-peak1_line = ax[1].axvline(x=0, color='green', linestyle='--', label='Peak 1')
-peak2_line = ax[1].axvline(x=0, color='red', linestyle='--', label='Peak 2')
+fig.canvas.mpl_connect('close_event', handle_close)
 
-peak1_text = ax[1].text(0.05, 0.95, '', transform=ax[1].transAxes,
-                        fontsize=10, color='green', bbox=dict(facecolor='white', alpha=0.7), verticalalignment='top')
-peak2_text = ax[1].text(0.05, 0.85, '', transform=ax[1].transAxes,
-                        fontsize=10, color='red', bbox=dict(facecolor='white', alpha=0.7), verticalalignment='top')
-
-peak1_text_extra = ax[1].text(0.05, 0.78, '', transform=ax[1].transAxes,
-                              fontsize=10, color='green', bbox=dict(facecolor='white', alpha=0.7), verticalalignment='top')
-peak2_text_extra = ax[1].text(0.05, 0.68, '', transform=ax[1].transAxes,
-                              fontsize=10, color='red', bbox=dict(facecolor='white', alpha=0.7), verticalalignment='top')
-
-ax[1].set_xlabel("Frequency (GHz)")
-ax[1].set_ylabel("PSD (a.u.)")
-ax[1].legend()
-ax[1].grid(True)
-plt.tight_layout()
-
-# --- GUI Buttons ---
-class Index:
+class Index(object):
     def savecsv(self, event):
+        global ll, s, prefix_csv
         if not os.path.exists('log'):
             os.makedirs('log')
         curTime = time.strftime("%Y-%m-%d-%H-%M-%S", time.gmtime())
-        np.savetxt(f'log/spectrum_{curTime}_spec1.csv', np.column_stack([ll, s]), fmt='%1.3f', delimiter=',')
-        np.savetxt(f'log/spectrum_{curTime}_spec2.csv', np.column_stack([ll2, s2]), fmt='%1.3f', delimiter=',')
-        np.savetxt(f'log/spectrum_{curTime}_spec1_fft.csv', np.sort(np.column_stack([1/freqs/1e9, np.abs(fourier)**2]), axis=0), fmt='%1.3f', delimiter=',')
-        np.savetxt(f'log/spectrum_{curTime}_spec2_fft.csv', np.sort(np.column_stack([1/freqs2/1e9, np.abs(fourier2)**2]), axis=0), fmt='%1.3f', delimiter=',')
+        fileName = prefix_csv + curTime + "spec1.csv"
+        fileName2 = prefix_csv + curTime + "spec2.csv"
+        fileName3 = prefix_csv + curTime + "spec1_fft.csv"
+        fileName4 = prefix_csv + curTime + "spec2_fft.csv"
+        np.savetxt(fileName, np.column_stack([ll, s]), fmt='%1.3f', delimiter=',')
+        np.savetxt(fileName2, np.column_stack([ll2, s2]), fmt='%1.3f', delimiter=',')
+        np.savetxt(fileName3, np.sort(np.column_stack([1/freqs/1e9, np.abs(fourier)**2]), axis=0), fmt='%1.3f', delimiter=',')
+        np.savetxt(fileName4, np.sort(np.column_stack([1/freqs2/1e9, np.abs(fourier2)**2]), axis=0), fmt='%1.3f', delimiter=',')
 
     def savepng(self, event):
+        global prefix_csv
         if not os.path.exists('log'):
             os.makedirs('log')
         curTime = time.strftime("%Y-%m-%d-%H-%M-%S", time.gmtime())
-        plt.savefig(f'log/spectrum_{curTime}.png')
+        fileName = prefix_csv + curTime + ".png"
+        plt.savefig(fileName)
 
 def autoy(label):
     global autoscaley, paused
@@ -115,79 +68,134 @@ def autoy(label):
 
 callback = Index()
 axcsv = plt.axes([0.7, 0.05, 0.1, 0.075])
-aximg = plt.axes([0.81, 0.05, 0.1, 0.075])
-axchecky = plt.axes([0.05, 0.03, 0.2, 0.15])
-
 bcsv = Button(axcsv, 'CSV')
 bcsv.on_clicked(callback.savecsv)
+aximg = plt.axes([0.81, 0.05, 0.1, 0.075])
 bimg = Button(aximg, 'PNG')
 bimg.on_clicked(callback.savepng)
+axchecky = plt.axes([0.05, 0.03, 0.2, 0.15])
 checky = CheckButtons(axchecky, ('Autoscale-Y', 'Pause'), (False, False))
 checky.on_clicked(autoy)
 
-# --- Window Close Handling ---
-def handle_close(evt):
-    global i
-    i = 1
+ll = spec.wavelengths()
+lowidx = next(i for i, v in enumerate(ll) if v > xrange[0])
+highidx = next(i for i, v in enumerate(ll) if v > xrange[1])
+s = spec.intensities()
 
-fig.canvas.mpl_connect('close_event', handle_close)
+ll2 = spec2.wavelengths()
+lowidx2 = next(i for i, v in enumerate(ll2) if v > xrange[0])
+highidx2 = next(i for i, v in enumerate(ll2) if v > xrange[1])
+s2 = spec2.intensities()
 
-# --- Live Loop ---
+plt.axes(ax[0])
+l, = plt.plot(ll[lowidx:highidx], s[lowidx:highidx], lw=2)
+lspec2, = plt.plot(ll2[lowidx2:highidx2], s2[lowidx2:highidx2], lw=2)
+plt.xlabel('Wavelength (nm)')
+plt.ylabel('Intensity (a.u.)')
+plt.title('Ocean Optics Spectrum: ' + spec.model + ' (' + spec.serial_number + ')')
+plt.grid(True)
+plt.xlim(xrange)
+
+Wavelength = ll[lowidx:highidx]
+c = 299792458
+Freq = c / (Wavelength * 1e-9)
+x = np.linspace(np.max(Freq), np.min(Freq), 10000)
+x_inv = x[::-1]
+dx = x_inv[1] - x_inv[0]
+
+def fft_with_axes(Intensities):
+    yval = np.interp(x[::-1], Freq[::-1], Intensities[::-1])
+    fourier = np.fft.fft(yval)
+    freqs = np.fft.fftfreq(yval.size, dx)
+    idx = np.argsort(freqs)
+    return (freqs[idx], fourier[idx])
+
+freqs, fourier = fft_with_axes(s[lowidx:highidx])
+
+Wavelength2 = ll2[lowidx2:highidx2]
+Freq2 = c / (Wavelength2 * 1e-9)
+x2 = np.linspace(np.max(Freq2), np.min(Freq2), 10000)
+x_inv2 = x2[::-1]
+dx2 = x_inv2[1] - x_inv2[0]
+
+def fft_with_axes2(Intensities):
+    yval2 = np.interp(x2[::-1], Freq2[::-1], Intensities[::-1])
+    fourier2 = np.fft.fft(yval2)
+    freqs2 = np.fft.fftfreq(yval2.size, dx2)
+    idx2 = np.argsort(freqs2)
+    return (freqs2[idx2], fourier2[idx2])
+
+freqs2, fourier2 = fft_with_axes2(s2[lowidx2:highidx2])
+
+plt.axes(ax[1])
+l2, = plt.loglog(1/freqs/1e9, np.abs(fourier)**2, 'g')
+l2spec2, = plt.loglog(1/freqs2/1e9, np.abs(fourier2)**2, 'r')
+plt.xlabel('Frequency (GHz)')
+plt.ylabel('PSD (a.u.)')
+plt.grid(True)
+
+# Peak tracking variables
+peak_line1 = None
+peak_line2 = None
+peak_label1 = None
+peak_label2 = None
+custom_labels = []
+
 while i == 0:
     if paused == 0:
         s = spec.intensities()
         s2 = spec2.intensities()
+
+        plt.axes(ax[0])
         l.set_ydata(s[lowidx:highidx])
         lspec2.set_ydata(s2[lowidx2:highidx2])
 
-        freqs, fourier = fft_with_axes(s[lowidx:highidx], Freq, dx, x)
-        freqs2, fourier2 = fft_with_axes(s2[lowidx2:highidx2], Freq2, dx2, x2)
+        freqs, fourier = fft_with_axes(s[lowidx:highidx])
+        freqs2, fourier2 = fft_with_axes2(s2[lowidx2:highidx2])
 
-        valid1 = freqs != 0
-        valid2 = freqs2 != 0
-        freq_ghz = 1 / freqs[valid1] / 1e9
-        freq2_ghz = 1 / freqs2[valid2] / 1e9
-        psd1 = np.abs(fourier[valid1])**2
-        psd2 = np.abs(fourier2[valid2])**2
-        psd1 = np.clip(psd1, 1e-20, None)
-        psd2 = np.clip(psd2, 1e-20, None)
+        plt.axes(ax[1])
+        l2.set_ydata(np.abs(fourier)**2)
+        l2spec2.set_ydata(np.abs(fourier2)**2)
 
-        l2.set_data(freq_ghz, psd1)
-        l2spec2.set_data(freq2_ghz, psd2)
-        ax[1].set_xlim(freq_ghz.min(), freq_ghz.max())
+        # Remove previous peaks and text
+        if peak_line1: peak_line1.remove()
+        if peak_label1: peak_label1.remove()
+        if peak_line2: peak_line2.remove()
+        if peak_label2: peak_label2.remove()
+        for label in custom_labels:
+            label.remove()
+        custom_labels.clear()
 
-        if autoscaley:
+        # Spectrum 1 peak
+        peak_idx1 = np.argmax(np.abs(fourier)**2)
+        peak_freq1 = 1 / freqs[peak_idx1] / 1e9
+        peak_power1 = np.abs(fourier[peak_idx1])**2
+        peak_line1 = ax[1].axvline(peak_freq1, color='black', linestyle='--', zorder=5)
+        peak_label1 = ax[1].text(peak_freq1, peak_power1, f'{peak_freq1:.2f} GHz',
+                                 color='black', fontsize=8, ha='left', va='bottom', zorder=6)
+
+        # Spectrum 2 peak
+        peak_idx2 = np.argmax(np.abs(fourier2)**2)
+        peak_freq2 = 1 / freqs2[peak_idx2] / 1e9
+        peak_power2 = np.abs(fourier2[peak_idx2])**2
+        peak_line2 = ax[1].axvline(peak_freq2, color='gray', linestyle='--', zorder=5)
+        peak_label2 = ax[1].text(peak_freq2, peak_power2, f'{peak_freq2:.2f} GHz',
+                                 color='gray', fontsize=8, ha='left', va='bottom', zorder=6)
+
+        # Add custom static text annotations
+        custom_labels.append(ax[1].text(1.0, 1e7, "Note 1", color='blue', fontsize=9))
+        custom_labels.append(ax[1].text(2.0, 1e6, "Note 2", color='green', fontsize=9))
+        custom_labels.append(ax[1].text(3.0, 1e5, "Note 3", color='purple', fontsize=9))
+        custom_labels.append(ax[1].text(4.0, 1e4, "Note 4", color='orange', fontsize=9))
+
+        if autoscaley == 1:
             ax[0].relim()
-            ax[0].autoscale_view()
+            ax[0].autoscale_view(True, True, True)
             ax[1].relim()
-            ax[1].autoscale_view()
+            ax[1].autoscale_view(True, True, True)
 
-        # Peak detection
-        peaks1, _ = find_peaks(psd1, height=np.max(psd1)*0.1, distance=10)
-        peaks2, _ = find_peaks(psd2, height=np.max(psd2)*0.1, distance=10)
+        plt.show()
+    plt.pause(plotwait)
 
-        if len(peaks1) > 0:
-            max1 = peaks1[np.argmax(psd1[peaks1])]
-            peak1_line.set_xdata(freq_ghz[max1])
-            peak1_text.set_text(f'Spec1 Peak:\n{freq_ghz[max1]:.2f} GHz\n{psd1[max1]:.2e}')
-            peak1_text_extra.set_text(f'Note: Max peak\nIndex = {max1}')
-        else:
-            peak1_line.set_xdata(np.nan)
-            peak1_text.set_text("Spec1 Peak:\nNone")
-            peak1_text_extra.set_text("")
-
-        if len(peaks2) > 0:
-            max2 = peaks2[np.argmax(psd2[peaks2])]
-            peak2_line.set_xdata(freq2_ghz[max2])
-            peak2_text.set_text(f'Spec2 Peak:\n{freq2_ghz[max2]:.2f} GHz\n{psd2[max2]:.2e}')
-            peak2_text_extra.set_text(f'Note: Max peak\nIndex = {max2}')
-        else:
-            peak2_line.set_xdata(np.nan)
-            peak2_text.set_text("Spec2 Peak:\nNone")
-            peak2_text_extra.set_text("")
-
-        plt.pause(plotwait)
-
-# --- Cleanup ---
 spec.close()
 spec2.close()
