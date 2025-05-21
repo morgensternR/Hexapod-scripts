@@ -297,7 +297,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
 
-# BGO FFT setup
+# --- Setup for Spectrum 1 ---
 Wavelength = ll[lowidx:highidx]
 c = 299792458
 Freq = c / (Wavelength * 1e-9)
@@ -306,14 +306,14 @@ x_inv = x[::-1]
 dx = x_inv[1] - x_inv[0]
 
 def fft_with_axes(Intensities):
-    """ Performs an FFT and outputs correct frequency axes for it as well """
     yval = np.interp(x[::-1], Freq[::-1], Intensities[::-1])
     y = yval
     fourier = np.fft.fft(y)
     freqs = np.fft.fftfreq(y.size, dx)
     idx = np.argsort(freqs)
-    return (freqs[idx], fourier[idx])
+    return freqs[idx], fourier[idx]
 
+# --- Setup for Spectrum 2 ---
 Wavelength2 = ll2[lowidx2:highidx2]
 c2 = 299792458
 Freq2 = c2 / (Wavelength2 * 1e-9)
@@ -322,44 +322,40 @@ x_inv2 = x2[::-1]
 dx2 = x_inv2[1] - x_inv2[0]
 
 def fft_with_axes2(Intensities):
-    """ Performs an FFT and outputs correct frequency axes for it as well """
     yval2 = np.interp(x2[::-1], Freq2[::-1], Intensities[::-1])
     y2 = yval2
     fourier2 = np.fft.fft(y2)
     freqs2 = np.fft.fftfreq(y2.size, dx2)
     idx2 = np.argsort(freqs2)
-    return (freqs2[idx2], fourier2[idx2])
+    return freqs2[idx2], fourier2[idx2]
 
-# Initial FFT
-freqs, fourier = fft_with_axes(s[lowidx:highidx])
-freqs2, fourier2 = fft_with_axes2(s2[lowidx2:highidx2])
-
-# Plot setup
+# --- Initial Plot Setup ---
 fig, ax = plt.subplots(2, 1, figsize=(10, 6))
 plt.ion()
 
-# Initial data plots
+# Initial plots
 l, = ax[0].plot(s[lowidx:highidx], label='Spectrum 1')
 lspec2, = ax[0].plot(s2[lowidx2:highidx2], label='Spectrum 2')
-l2, = ax[1].loglog(1 / freqs / 1e9, np.abs(fourier) ** 2, 'g', label='FFT 1')
-l2spec2, = ax[1].loglog(1 / freqs2 / 1e9, np.abs(fourier2) ** 2, 'r', label='FFT 2')
+l2, = ax[1].plot([], [], 'g', label='FFT 1')
+l2spec2, = ax[1].plot([], [], 'r', label='FFT 2')
 
-# Vertical lines to mark peaks
+# Peak markers
 peak1_line = ax[1].axvline(x=0, color='green', linestyle='--', label='Peak 1')
 peak2_line = ax[1].axvline(x=0, color='red', linestyle='--', label='Peak 2')
 
-# Text boxes to show peak info
+# Peak text annotations
 peak1_text = ax[1].text(0.05, 0.95, '', transform=ax[1].transAxes,
                         fontsize=10, color='green', bbox=dict(facecolor='white', alpha=0.7), verticalalignment='top')
 peak2_text = ax[1].text(0.05, 0.85, '', transform=ax[1].transAxes,
                         fontsize=10, color='red', bbox=dict(facecolor='white', alpha=0.7), verticalalignment='top')
 
+# Additional annotation lines
 peak1_text_extra = ax[1].text(0.05, 0.78, '', transform=ax[1].transAxes,
                               fontsize=10, color='green', bbox=dict(facecolor='white', alpha=0.7), verticalalignment='top')
 peak2_text_extra = ax[1].text(0.05, 0.68, '', transform=ax[1].transAxes,
                               fontsize=10, color='red', bbox=dict(facecolor='white', alpha=0.7), verticalalignment='top')
 
-# Axis labels and layout
+# Labels
 ax[0].set_ylabel("Intensity")
 ax[1].set_xlabel("Frequency (GHz)")
 ax[1].set_ylabel("PSD (a.u.)")
@@ -369,29 +365,40 @@ ax[0].grid(True)
 ax[1].grid(True)
 plt.tight_layout()
 
-# --- Live update loop ---
+# --- Live Update Loop ---
 while i == 0:
     if paused == 0:
+        # Get spectra
         s = spec.intensities()
         s2 = spec2.intensities()
 
-        # Update raw intensity plots
+        # Update intensity plots
         l.set_ydata(s[lowidx:highidx])
         lspec2.set_ydata(s2[lowidx2:highidx2])
 
-        # Compute FFTs
+        # FFTs
         freqs, fourier = fft_with_axes(s[lowidx:highidx])
         freqs2, fourier2 = fft_with_axes2(s2[lowidx2:highidx2])
 
-        psd1 = np.abs(fourier) ** 2
-        psd2 = np.abs(fourier2) ** 2
+        # Mask to remove zeros for 1/f conversion
+        valid_freqs = (freqs != 0)
+        valid_freqs2 = (freqs2 != 0)
 
-        freq_ghz = 1 / freqs / 1e9
-        freq2_ghz = 1 / freqs2 / 1e9
+        freq_ghz = 1 / freqs[valid_freqs] / 1e9
+        freq2_ghz = 1 / freqs2[valid_freqs2] / 1e9
+
+        psd1 = np.abs(fourier[valid_freqs])**2
+        psd2 = np.abs(fourier2[valid_freqs2])**2
+
+        # Prevent log(0)
+        psd1 = np.clip(psd1, 1e-20, None)
+        psd2 = np.clip(psd2, 1e-20, None)
 
         # Update FFT plots
         l2.set_data(freq_ghz, psd1)
         l2spec2.set_data(freq2_ghz, psd2)
+
+        # Update limits
         ax[1].set_xlim(freq_ghz.min(), freq_ghz.max())
 
         if autoscaley == 1:
@@ -400,41 +407,36 @@ while i == 0:
             ax[1].relim()
             ax[1].autoscale_view(True, True, True)
 
-        # Find and display highest peaks
-        from scipy.signal import find_peaks
+        # --- Peak Detection ---
         peaks1, _ = find_peaks(psd1, height=np.max(psd1) * 0.1, distance=10)
         peaks2, _ = find_peaks(psd2, height=np.max(psd2) * 0.1, distance=10)
 
         if len(peaks1) > 0:
             max_peak1 = peaks1[np.argmax(psd1[peaks1])]
-            freq_ghz_1 = 1 / freqs[max_peak1] / 1e9
+            freq_ghz_1 = freq_ghz[max_peak1]
             power_1 = psd1[max_peak1]
             peak1_line.set_xdata(freq_ghz_1)
             peak1_text.set_text(f'Spec1 Peak:\n{freq_ghz_1:.2f} GHz\n{power_1:.2e}')
-            peak1_text_extra.set_text(f'Distance peak 1 (c/ ( 2*freq ) ) = {3e8/(2*freq_ghz_1)}')
-
+            peak1_text_extra.set_text(f'Note: Max peak\nIndex = {max_peak1}')
         else:
             peak1_line.set_xdata(np.nan)
             peak1_text.set_text("Spec1 Peak:\nNone")
+            peak1_text_extra.set_text("")
 
         if len(peaks2) > 0:
             max_peak2 = peaks2[np.argmax(psd2[peaks2])]
-            freq_ghz_2 = 1 / freqs2[max_peak2] / 1e9
+            freq_ghz_2 = freq2_ghz[max_peak2]
             power_2 = psd2[max_peak2]
             peak2_line.set_xdata(freq_ghz_2)
             peak2_text.set_text(f'Spec2 Peak:\n{freq_ghz_2:.2f} GHz\n{power_2:.2e}')
-            peak2_text_extra.set_text(f'Distance peak 2 (c/ ( 2*freq ) ) = {3e8/(2*freq_ghz_2)}')
-
+            peak2_text_extra.set_text(f'Note: Max peak\nIndex = {max_peak2}')
         else:
             peak2_line.set_xdata(np.nan)
             peak2_text.set_text("Spec2 Peak:\nNone")
+            peak2_text_extra.set_text("")
 
         plt.pause(plotwait)
 
 # Cleanup
 spec.close()
 spec2.close()
-
-
-
-
