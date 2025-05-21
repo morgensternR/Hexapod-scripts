@@ -197,7 +197,7 @@ class HexapodController:
                 pitools.startup(
                     pidevice=self.pidevice,  # The PI device object
                     stages=None,             # All axes to initialize
-                    refmodes=None,          # Use FRF (reference using reference position) for all axes
+                    refmodes='FRF',          # Use FRF (reference using reference position) for all axes. Set to None if no movemnt desired. 
                     servostates=True         # Enable servo for all axes
                 )
                 print("Hexapod initialization complete")
@@ -921,7 +921,7 @@ class HexapodController:
 # Initialize hexapod object using serial (DOESNT WORK YET)
 #hexa = HexapodController(connection_type='serial', port='COM7', baudrate=115200, timeout=1, device_name='C-887')
 # Initialize hexapod object using PiPython window
-hexa = HexapodController(connection_type='pipython', port=None, baudrate=115200, timeout=1, device_name='C-887')
+hexa = HexapodController(connection_type='pipython', port=Noneh, baudrate=115200, timeout=1, device_name='C-887')
 
 
 
