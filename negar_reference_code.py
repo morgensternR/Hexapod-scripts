@@ -354,6 +354,11 @@ peak1_text = ax[1].text(0.05, 0.95, '', transform=ax[1].transAxes,
 peak2_text = ax[1].text(0.05, 0.85, '', transform=ax[1].transAxes,
                         fontsize=10, color='red', bbox=dict(facecolor='white', alpha=0.7), verticalalignment='top')
 
+peak1_text_extra = ax[1].text(0.05, 0.78, '', transform=ax[1].transAxes,
+                              fontsize=10, color='green', bbox=dict(facecolor='white', alpha=0.7), verticalalignment='top')
+peak2_text_extra = ax[1].text(0.05, 0.68, '', transform=ax[1].transAxes,
+                              fontsize=10, color='red', bbox=dict(facecolor='white', alpha=0.7), verticalalignment='top')
+
 # Axis labels and layout
 ax[0].set_ylabel("Intensity")
 ax[1].set_xlabel("Frequency (GHz)")
@@ -406,6 +411,8 @@ while i == 0:
             power_1 = psd1[max_peak1]
             peak1_line.set_xdata(freq_ghz_1)
             peak1_text.set_text(f'Spec1 Peak:\n{freq_ghz_1:.2f} GHz\n{power_1:.2e}')
+            peak1_text_extra.set_text(f'Distance peak 1 (c/ ( 2*freq ) ) = {3e8/(2*freq_ghz_1)}')
+
         else:
             peak1_line.set_xdata(np.nan)
             peak1_text.set_text("Spec1 Peak:\nNone")
@@ -416,6 +423,8 @@ while i == 0:
             power_2 = psd2[max_peak2]
             peak2_line.set_xdata(freq_ghz_2)
             peak2_text.set_text(f'Spec2 Peak:\n{freq_ghz_2:.2f} GHz\n{power_2:.2e}')
+            peak2_text_extra.set_text(f'Distance peak 2 (c/ ( 2*freq ) ) = {3e8/(2*freq_ghz_2)}')
+
         else:
             peak2_line.set_xdata(np.nan)
             peak2_text.set_text("Spec2 Peak:\nNone")
