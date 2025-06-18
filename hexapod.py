@@ -21,7 +21,7 @@ class HexapodController:
     Supports both direct serial communication and the PI Python library interface.
     """
     
-    def __init__(self, connection_type='serial', port=None, baudrate=115200, timeout=1, device_name='C-887'):
+    def __init__(self, connection_type='serial', port=None, baudrate=115200, timeout=1, device_name='C-887', ref_mode = None):
         """
         Initialize the Hexapod controller connection.
         
@@ -57,6 +57,7 @@ class HexapodController:
         self.connect()
         
         # When first started, turn on all axes
+        self.ref_mode = ref_mode
         self.initialize()
         
     def connect(self, auto_setup=True):
@@ -197,7 +198,7 @@ class HexapodController:
                 pitools.startup(
                     pidevice=self.pidevice,  # The PI device object
                     stages=None,             # All axes to initialize
-                    refmodes='FRF',          # Use FRF (reference using reference position) for all axes. Set to None if no movemnt desired. 
+                    refmodes=self.ref_mode,          # Use FRF (reference using reference position) for all axes. Set to None if no movemnt desired. 
                     servostates=True         # Enable servo for all axes
                 )
                 print("Hexapod initialization complete")
@@ -918,14 +919,16 @@ class HexapodController:
     def set_pos_to_zero(self):
         for axis in ['X', 'Y', 'Z', 'U', 'V', 'W']:
             self.move_absolute(axis, 0)
+#%%
 # Initialize hexapod object using serial (DOESNT WORK YET)
 #hexa = HexapodController(connection_type='serial', port='COM7', baudrate=115200, timeout=1, device_name='C-887')
 # Initialize hexapod object using PiPython window
-hexa = HexapodController(connection_type='pipython', port=Noneh, baudrate=115200, timeout=1, device_name='C-887')
+hexa = HexapodController(connection_type='pipython', port=None, 
+                         baudrate=115200, timeout=1, device_name='C-887',
+                         ref_mode = None)
 
 
 
-#%%
 
     
 #%%
@@ -936,17 +939,47 @@ import time
 import csv
 import os
 import u6
+from labjack import ljm
+
 
 # Make the labjack instrument and call it "d"
 right_labjack = u6.U6(firstFound=False, localId=None, serial=360024796)
-#left_labjack = u6.U6(firstFound=False, localId=None, serial=360011806)
+left_labjack = u6.U6(firstFound=False, localId=None, serial=360011806)
+#%%
+v1 = right_labjack.getAIN(positiveChannel = 6,
+                resolutionIndex = 9,                
+                gainIndex = 0,
+                settlingFactor = 2,
+                differential = True)
+print(v1)
 
+v1 = left_labjack.getAIN(positiveChannel = 6,
+                resolutionIndex = 9,                
+                gainIndex = 0,
+                settlingFactor = 2,
+                differential = True)
+print(v1)
 
+#%%
+
+def get_single_voltage(channel, num_avg, labjack_object):
+    voltage_list = []
+    for n in range(num_avg):
+        voltage = labjack_object.getAIN(positiveChannel = channel,
+                        resolutionIndex = 9,                
+                        gainIndex = 0,
+                        settlingFactor = 2,
+                        differential = True)
+        voltage_list.append(voltage)
+    voltage_mean= np.mean(voltage_list)
+    return voltage_mean
 def get_voltage(num_avg, labjack_object):     
         voltage_list = []
         voltage_channel_list =[]
         for channel in [0,2,4,6]:
+            print(channel)
             for n in range(num_avg):
+                print(channel)
                 voltage = labjack_object.getAIN(positiveChannel = channel,
                                 resolutionIndex = 9,                
                                 gainIndex = 0,
@@ -954,10 +987,13 @@ def get_voltage(num_avg, labjack_object):
                                 differential = True)
                 voltage_list.append(voltage)
             voltage_mean= np.mean(voltage_list)
-            
+            print(voltage_mean)
             voltage_channel_list.append(voltage_mean)
+            time.sleep(0.01)
         v1, v2, v3, v4 = voltage_list[0], voltage_list[1], voltage_list[2], voltage_list[3]
         return v1, v2, v3, v4
+    
+    
 def get_both_labjack_voltages(left_labjack, right_labjack, num_avg):
         l_v1, l_v2, l_v3, l_v4 = get_voltage(num_avg=num_avg, labjack_object=left_labjack)
         
@@ -966,18 +1002,25 @@ def get_both_labjack_voltages(left_labjack, right_labjack, num_avg):
         return l_v1, l_v2, l_v3, l_v4, r_v1, r_v2, r_v3, r_v4
 
 #%%%
-result = get_voltage(num_avg = 10, labjack_object=right_labjack)
 
-print(result)
-
+while True:
+    time_start = time.time()
+    print(get_single_voltage(channel =0, num_avg = 1, labjack_object = right_labjack))
+    print('time elapsed =' ,time.time()-time_start)
+    print(get_single_voltage(channel =2, num_avg = 1, labjack_object = right_labjack))
+    print(get_single_voltage(channel =4, num_avg = 1, labjack_object = right_labjack))
+    print(get_single_voltage(channel =6, num_avg = 1, labjack_object = right_labjack))
+    print('time elapsed =' ,time.time()-time_start)
+    print('\n')
+    time.sleep(0.001)
 
 #%%
 
 # scan_2d requires the use of get_both_labjack_voltages function. Pass this into measurement_function. 
-
-def scan_2d(hexapod_object, axis_1, axis_2, step_range, step_size, measurment_function, csv_file_name='my_csv_file.csv'):
+# old bad non zigzag scan
+def scan_2d(hexapod_object, axis_1, axis_2, step_range, step_size, num_avg,labjack_object, csv_file_name='my_csv_file.csv'):
     try:
-        scan_range = np.arange(start=-step_range, stop=step_range + step_size, step=step_size)
+        scan_range = np.arange(start=0, stop=step_range + step_size, step=step_size)
         initial_position = hexapod_object.get_position()
 
         # Check if CSV file exists, if not create and write header
@@ -985,26 +1028,29 @@ def scan_2d(hexapod_object, axis_1, axis_2, step_range, step_size, measurment_fu
         with open(csv_file_name, mode='a', newline='') as file:
             writer = csv.writer(file)
             if not file_exists:
-                writer.writerow(['position',  'l_v1', 'l_v2', 'l_v3', 'l_v4', 'r_v1', 'r_v2', 'r_v3', 'r_v4'])  # Header
+                writer.writerow(['position',  'v1', 'v2', 'v3', 'v4'])  # Header
 
             for axis_1_step in scan_range:
                 axis_1_initial_pos = initial_position[f'{axis_1}']
-                step_to_move_to_axis_1 = axis_1_initial_pos + axis_1_step
+                step_to_move_to_axis_1 = axis_1_initial_pos - axis_1_step
                 print(f'Moving {axis_1} to {step_to_move_to_axis_1}')
                 hexapod_object.move_absolute(axes=f'{axis_1}', positions=step_to_move_to_axis_1)
                 time.sleep(0.1)
 
                 for axis_2_step in scan_range:
                     axis_2_initial_pos = initial_position[f'{axis_2}']
-                    step_to_move_to_axis_2 = axis_2_initial_pos + axis_2_step
+                    step_to_move_to_axis_2 = axis_2_initial_pos - axis_2_step
                     print(f'Moving {axis_2} to {step_to_move_to_axis_2}')
                     hexapod_object.move_absolute(axes=f'{axis_2}', positions=step_to_move_to_axis_2)
                     time.sleep(0.1)
 
                     # Get measurement
                     #l_v1, l_v2, l_v3, l_v4, r_v1, r_v2, r_v3, r_v4 = measurment_function()
-                    r_v1, r_v2, r_v3, r_v4 = measurment_function()
-
+                    #r_v1, r_v2, r_v3, r_v4 = measurment_function()
+                    v1 = get_single_voltage(channel =0, num_avg = num_avg, labjack_object = labjack_object)
+                    v2 = get_single_voltage(channel =2, num_avg = num_avg, labjack_object = labjack_object)
+                    v3 = get_single_voltage(channel =4, num_avg = num_avg, labjack_object = labjack_object)
+                    v4 = get_single_voltage(channel =6, num_avg = num_avg, labjack_object = labjack_object)
                     # Log the step positions and measurement
                     hexapod_position = hexapod_object.get_position()
                     axis1_pos = hexapod_position[f'{axis_1}']
@@ -1012,8 +1058,78 @@ def scan_2d(hexapod_object, axis_1, axis_2, step_range, step_size, measurment_fu
                     
                     #writer.writerow([[f'{axis1_pos}', f'{axis2_pos}'], 
                     #                 l_v1, l_v2, l_v3, l_v4, r_v1, r_v2, r_v3, r_v4])
-                    writer.writerow([[f'{axis1_pos}', f'{axis2_pos}'], 
-                                      r_v1, r_v2, r_v3, r_v4])
+                    writer.writerow([[f'{float(axis1_pos)}', f'{float(axis2_pos)}'], 
+                                      v1, v2, v3, v4])
+
+        # Return to initial position
+        for axis in initial_position.keys():
+            hexapod_object.move_absolute(axis, initial_position[axis])
+
+    except Exception as e:
+        print(f"Error during scan: {e}")
+#%%%
+
+
+def scan_2d(hexapod_object, axis_1, axis_2, step_range, step_size, num_avg, labjack_object_1, labjack_object_2 = None, csv_file_name='my_csv_file.csv'):
+    try:
+        import numpy as np
+        import time
+        import os
+        import csv
+
+        scan_range = np.arange(start=0, stop=step_range + step_size, step=step_size)
+        initial_position = hexapod_object.get_position()
+
+        # Check if CSV file exists, if not create and write header
+        file_exists = os.path.isfile(csv_file_name)
+        with open(csv_file_name, mode='a', newline='') as file:
+            writer = csv.writer(file)
+            if not file_exists:
+                if labjack_object_2 != None:
+                    writer.writerow(['x_index', 'y_index', f'{axis_1}', f'{axis_2}', 'v1', 'v2', 'v3', 'v4', 'v21', 'v22', 'v23', 'v24'])
+
+                else:    
+                    writer.writerow(['x_index', 'y_index', f'{axis_1}', f'{axis_2}', 'v1', 'v2', 'v3', 'v4'])
+
+            for x_index, axis_1_step in enumerate(scan_range):
+                axis_1_initial_pos = initial_position[f'{axis_1}']
+                step_to_move_to_axis_1 = axis_1_initial_pos - axis_1_step
+                print(f'Moving {axis_1} to {step_to_move_to_axis_1}')
+                hexapod_object.move_absolute(axes=f'{axis_1}', positions=step_to_move_to_axis_1)
+                time.sleep(0.1)
+
+                # Zigzag direction
+                current_scan_range = scan_range if x_index % 2 == 0 else scan_range[::-1]
+
+                for y_offset, axis_2_step in enumerate(current_scan_range):
+                    y_index = y_offset if x_index % 2 == 0 else len(scan_range) - 1 - y_offset
+
+                    axis_2_initial_pos = initial_position[f'{axis_2}']
+                    step_to_move_to_axis_2 = axis_2_initial_pos - axis_2_step
+                    print(f'Moving {axis_2} to {step_to_move_to_axis_2}')
+                    hexapod_object.move_absolute(axes=f'{axis_2}', positions=step_to_move_to_axis_2)
+                    time.sleep(0.1)
+
+                    # Voltage measurements
+                    v1 = get_single_voltage(channel=0, num_avg=num_avg, labjack_object=labjack_object_1)
+                    v2 = get_single_voltage(channel=2, num_avg=num_avg, labjack_object=labjack_object_1)
+                    v3 = get_single_voltage(channel=4, num_avg=num_avg, labjack_object=labjack_object_1)
+                    v4 = get_single_voltage(channel=6, num_avg=num_avg, labjack_object=labjack_object_1)
+                    if labjack_object_2 != None:
+                        v21 = get_single_voltage(channel=0, num_avg=num_avg, labjack_object=labjack_object_2)
+                        v22 = get_single_voltage(channel=2, num_avg=num_avg, labjack_object=labjack_object_2)
+                        v23 = get_single_voltage(channel=4, num_avg=num_avg, labjack_object=labjack_object_2)
+                        v24 = get_single_voltage(channel=6, num_avg=num_avg, labjack_object=labjack_object_2)
+                    hexapod_position = hexapod_object.get_position()
+                    #decimal_places = get_decimal_places(step_size)
+                    #additional_sigfigs = 0
+                    axis1_pos = hexapod_position[f'{axis_1}']
+                    axis2_pos = hexapod_position[f'{axis_2}']
+                    if labjack_object_2 != None:
+                        writer.writerow([x_index, y_index, axis1_pos, axis2_pos, v1, v2, v3, v4, v21, v22, v23, v24])
+                    else:
+                        writer.writerow([x_index, y_index, axis1_pos, axis2_pos, v1, v2, v3, v4])
+
 
         # Return to initial position
         for axis in initial_position.keys():
@@ -1022,10 +1138,40 @@ def scan_2d(hexapod_object, axis_1, axis_2, step_range, step_size, measurment_fu
     except Exception as e:
         print(f"Error during scan: {e}")
 
-   #%%         
-scan_2d(hexapod_object = hexa, axis_1 = 'X', axis_2 = 'Y', step_range = 0.1, step_size = 0.05, 
-    measurment_function= lambda:get_voltage(num_avg=10,labjack_object=right_labjack), csv_file_name='first_scan_test_Right_labjack.csv')
+        
+# def get_decimal_places(value):
+#     s = f'{value:.10f}'.rstrip('0')  # Avoid floating point issues
+#     if '.' in s:
+#         return len(s.split('.')[1])
+#     return 0
+ #%%     
+step_range = 0.12
+step_size = 0.0005
 
+num_avg = 10
+# Change laser_on_ to background .etc for background data file name
+filename = (time.strftime("%Y-%m-%d %H-%M-%S")+ f"_laser_on_high_data_scan_right_labjack_{step_range}_{step_size}_{num_avg}"+".csv")
+outpath = r'C:\Users\qittlab\Documents\Hexapod data' 
+
+file_name= outpath+ filename   
+start_time = time.time()
+
+scan_2d(hexapod_object = hexa, axis_1 = 'Y', axis_2 = 'X', 
+        step_range = step_range, step_size = step_size, labjack_object = right_labjack,
+        num_avg= num_avg, csv_file_name=file_name)
+
+time_end = time.time() - start_time
+print(f'scan ended in {time_end}')
 
   
     #%%
+# MY background starting position
+startingpos = hexa.get_position()
+#%%
+# 5/21/25
+after_fft_allign = {'X': -0.0600108409175,
+             'Y': 1.50001018525,
+             'Z': 1.70000058138,
+             'U': 1.31000553501,
+             'V': -0.349992895264,
+             'W': 0.019990918483}

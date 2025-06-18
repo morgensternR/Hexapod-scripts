@@ -1,0 +1,21 @@
+0. Open code editor and make sure the python interpreter/environment is using the base anaconda environment. 
+	0.1. Optional: Open anaconda prompt and type 'spyder'
+1. Turn on hexapod controller. 
+2. Before the hexapod can move, it must calibrate itself.  	IF THE FIBER BUNDLE IS TOO CLOSE TO THE CHIP, THE CALIBRATE MOVEMENT MAY RAM THE FIBER INTO THE CHIP
+	2.1 There are two ways to calibrate/home it. 
+		2.1.1 One is by the PI-c887 manual movement controller. (This referencing involves very minimal movement.)
+		2.1.1 Second is by software. In the HexapodController python class. (This refencing involves larger movement)
+			the initialize function has a ref mode that can be set. If ref = None, it will not self calibrate. There are multiple modes in which it can 			ref, 			but I've only used FRF or none.
+                    	Python code: "refmodes=None,# Use FRF (reference using reference position) for all axes. Set to None if no movement desired."
+
+ 3. Once the hexapod is referenced/calibrated. It can now move. Before starting the HexpodController python class, you must define ref_mode as an input variable. This will either be 'None' (means do not calibrate movement) or 'FRF' (this will move the hexapod to its limit switch to calibrate). 
+	3.1.  if using connection_type 'pipython': Look for a pop-up window to connect to the hexapod
+	3.2. Optional: To double check if the hexapod is setup correctly, try using the move_relative function on a axis and distance that 		wont damage anything
+	3.3. "hexa.move_relative(axes = 'Z', distances=1)" This will move is relative to the current position
+4. Adjust tip/tilt using spectrometer
+	4.1 To get the position after tip/tilt use "hexa.get_position()"
+	4.2 To save the position, write down, or assign the output of get_position to a variable, "starting_pos = hexa.get_position()"
+5. Goal: Find a scan range that both the left and right fiber light will scan through their entire respective device. 
+	5.1. Park the light from the left fiber, in the upper left of its device. 
+	5.2. Then scan the viewing camera to the right device to see where it is relevative to our parking position. You may need to change your parking/starting scan position to start in the upper left of the right device.
+	5.3 Once you found a starting position that works for both devices, do a scan with very minimal steps to view the range of the scan. The range must cover the  entire left and right device, so that we may find the center of each device. 
